@@ -1,9 +1,10 @@
 import os
 
 import cv2
-from . import pre_proc
 from scipy.io import loadmat
 from torch.utils import data
+
+from . import pre_proc
 
 
 class BaseDataset(data.Dataset):
@@ -19,13 +20,11 @@ class BaseDataset(data.Dataset):
         self.img_dir = os.path.join(data_dir, "data", self.phase)
         self.img_ids = sorted(os.listdir(self.img_dir))
 
-    # def load_image(self, index):
-    #     image = cv2.imread(os.path.join(self.img_dir, self.img_ids[index]))
-    #     return image
-
     def load_annotation(self, index):
         img_id = self.img_ids[index]
-        annotation_dir = os.path.join(self.data_dir, "labels", self.phase, img_id + ".mat")
+        annotation_dir = os.path.join(
+            self.data_dir, "labels", self.phase, img_id + ".mat"
+        )
         pts = loadmat(annotation_dir)["p2"]
         return pts
 
