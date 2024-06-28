@@ -154,24 +154,24 @@ def processing_train(image, pts, image_h, image_w, down_ratio, aug_label, img_id
     h, w, c = image.shape
     # pts = filter_pts(pts, w, h)
     # ---------------------------------------------------------------
-    data_aug = {
-        "train": transform.Compose(
-            [
-                transform.ConvertImgFloat(),
-                transform.PhotometricDistort(),
-                transform.Expand(max_scale=1.5, mean=(0, 0, 0)),
-                transform.RandomMirror_w(),
-                transform.Resize(h=image_h, w=image_w),
-            ]
-        ),
-        "val": transform.Compose(
-            [transform.ConvertImgFloat(), transform.Resize(h=image_h, w=image_w)]
-        ),
-    }
+    train_transform = transform.Compose(
+        [
+            transform.ConvertImgFloat(),
+            transform.PhotometricDistort(),
+            transform.Expand(max_scale=1.5, mean=(0, 0, 0)),
+            transform.RandomMirror_w(),
+            transform.Resize(h=image_h, w=image_w),
+        ]
+    )
+
+    val_transform = transform.Compose(
+        [transform.ConvertImgFloat(), transform.Resize(h=image_h, w=image_w)]
+    )
+
     if aug_label:
-        out_image, pts = data_aug["train"](image.copy(), pts)
+        out_image, pts = train_transform(image.copy(), pts)
     else:
-        out_image, pts = data_aug["val"](image.copy(), pts)
+        out_image, pts = val_transform(image.copy(), pts)
 
     out_image = np.clip(out_image, a_min=0.0, a_max=255.0)
     out_image = np.transpose(out_image / 255.0 - 0.5, (2, 0, 1))
