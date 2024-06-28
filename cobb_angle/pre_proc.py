@@ -1,6 +1,6 @@
 import cv2
 import torch
-from .draw_gaussian import gaussian_radius, draw_umich_gaussian
+from .draw_gaussian import calculate_gaussian_radius, apply_gaussian_to_heatmap
 from . import transform
 import math
 import numpy as np
@@ -118,9 +118,9 @@ def generate_ground_truth(image, pts_2, image_h, image_w, img_id):
         cen_x, cen_y = np.mean(pts, axis=0)
         ct = np.asarray([cen_x, cen_y], dtype=np.float32)
         ct_int = ct.astype(np.int32)
-        radius = gaussian_radius((math.ceil(bbox_h), math.ceil(bbox_w)))
+        radius = calculate_gaussian_radius((math.ceil(bbox_h), math.ceil(bbox_w)))
         radius = max(0, int(radius))
-        draw_umich_gaussian(hm[0, :, :], ct_int, radius=radius)
+        apply_gaussian_to_heatmap(hm[0, :, :], ct_int, radius=radius)
         ind[k] = ct_int[1] * image_w + ct_int[0]
         reg[k] = ct - ct_int
         reg_mask[k] = 1

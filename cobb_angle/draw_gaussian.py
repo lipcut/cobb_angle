@@ -1,53 +1,54 @@
 import numpy as np
 
 
-def gaussian_radius(det_size, min_overlap=0.7):
+def calculate_gaussian_radius(det_size, min_overlap=0.7):
     height, width = det_size
 
-    a1 = 1
-    b1 = height + width
-    c1 = width * height * (1 - min_overlap) / (1 + min_overlap)
-    sq1 = np.sqrt(b1**2 - 4 * a1 * c1)
-    r1 = (b1 + sq1) / 2
+    def solve_quadratic(a, b, c):
+        discriminant = np.sqrt(b**2 - 4 * a * c)
+        return (-b + discriminant) / (2 * a)
 
-    a2 = 4
-    b2 = 2 * (height + width)
-    c2 = (1 - min_overlap) * width * height
-    sq2 = np.sqrt(b2**2 - 4 * a2 * c2)
-    r2 = (b2 + sq2) / 2
+    r1 = solve_quadratic(
+        1, -(height + width), width * height * (1 - min_overlap) / (1 + min_overlap)
+    )
+    r2 = solve_quadratic(4, -2 * (height + width), (1 - min_overlap) * width * height)
+    r3 = solve_quadratic(
+        4 * min_overlap,
+        2 * min_overlap * (height + width),
+        (min_overlap - 1) * width * height,
+    )
 
-    a3 = 4 * min_overlap
-    b3 = -2 * min_overlap * (height + width)
-    c3 = (min_overlap - 1) * width * height
-    sq3 = np.sqrt(b3**2 - 4 * a3 * c3)
-    r3 = (b3 + sq3) / 2
     return min(r1, r2, r3)
 
 
-def gaussian2D(shape, sigma=1):
-    m, n = [(ss - 1.0) / 2.0 for ss in shape]
-    y, x = np.ogrid[-m : m + 1, -n : n + 1]
+def create_gaussian_2d(shape, sigma=1):
+    y, x = [np.arange(-(s - 1) / 2, (s + 1) / 2) for s in shape]
+    xx, yy = np.meshgrid(x, y)
 
-    h = np.exp(-(x * x + y * y) / (2 * sigma * sigma))
-    h[h < np.finfo(h.dtype).eps * h.max()] = 0
-    return h
+    gaussian = np.exp(-(xx**2 + yy**2) / (2 * sigma**2))
+    gaussian[gaussian < np.finfo(gaussian.dtype).eps * gaussian.max()] = 0
+    return gaussian
 
 
-def draw_umich_gaussian(heatmap, center, radius, k=1):
-    diameter = 2 * radius + 1
-    gaussian = gaussian2D((diameter, diameter), sigma=diameter / 6)
+def apply_gaussian_to_heatmap(heatmap, center, radius, k=1):
+    diameter = int(2 * radius + 1)
+    gaussian = create_gaussian_2d((diameter, diameter), sigma=diameter / 6)
 
-    x, y = int(center[0]), int(center[1])
+    x, y = map(int, center)
+    height, width = heatmap.shape[:2]
 
-    height, width = heatmap.shape[0:2]
+    left, right = max(0, x - radius), min(width, x + radius + 1)
+    top, bottom = max(0, y - radius), min(height, y + radius + 1)
 
-    left, right = min(x, radius), min(width - x, radius + 1)
-    top, bottom = min(y, radius), min(height - y, radius + 1)
+    gaussian_left = max(0, radius - x)
+    gaussian_top = max(0, radius - y)
 
-    masked_heatmap = heatmap[y - top : y + bottom, x - left : x + right]
-    masked_gaussian = gaussian[
-        radius - top : radius + bottom, radius - left : radius + right
+    gaussian_crop = gaussian[
+        gaussian_top : gaussian_top + (bottom - top),
+        gaussian_left : gaussian_left + (right - left),
     ]
-    if min(masked_gaussian.shape) > 0 and min(masked_heatmap.shape) > 0:  # TODO debug
-        np.maximum(masked_heatmap, masked_gaussian * k, out=masked_heatmap)
+
+    heatmap_crop = heatmap[top:bottom, left:right]
+    np.maximum(heatmap_crop, gaussian_crop * k, out=heatmap_crop)
+
     return heatmap
