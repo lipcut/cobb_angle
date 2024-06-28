@@ -41,48 +41,46 @@ def draw_spinal(pts, out_image):
     return out_image
 
 
-def rearrange_pts(pts):
-    # rearrange left right sequence
-    boxes = []
-    centers = []
-    for k in range(0, len(pts), 4):
-        pts_4 = pts[k : k + 4, :]
-        x_inds = np.argsort(pts_4[:, 0])
-        pt_l = np.asarray(pts_4[x_inds[:2], :])
-        pt_r = np.asarray(pts_4[x_inds[2:], :])
-        y_inds_l = np.argsort(pt_l[:, 1])
-        y_inds_r = np.argsort(pt_r[:, 1])
-        tl = pt_l[y_inds_l[0], :]
-        bl = pt_l[y_inds_l[1], :]
-        tr = pt_r[y_inds_r[0], :]
-        br = pt_r[y_inds_r[1], :]
-        # boxes.append([tl, tr, bl, br])
-        boxes.append(tl)
-        boxes.append(tr)
-        boxes.append(bl)
-        boxes.append(br)
-        centers.append(np.mean(pts_4, axis=0))
-    bboxes = np.asarray(boxes, np.float32)
-    # rearrange top to bottom sequence
-    centers = np.asarray(centers, np.float32)
-    sort_tb = np.argsort(centers[:, 1])
-    new_bboxes = []
-    for sort_i in sort_tb:
-        new_bboxes.append(bboxes[4 * sort_i, :])
-        new_bboxes.append(bboxes[4 * sort_i + 1, :])
-        new_bboxes.append(bboxes[4 * sort_i + 2, :])
-        new_bboxes.append(bboxes[4 * sort_i + 3, :])
-    new_bboxes = np.asarray(new_bboxes, np.float32)
-    return new_bboxes
+def rearrange_pts(points: np.ndarray) -> np.ndarray:
+    r"""rearrange the points so that the output array will be a the consective array of
+    top left (tl), top right (tr), bottom left (bl), bottom right (br).
+    i.e.
+    output = [
+        tl,
+        tr,
+        bl,
+        br,
+        ...
+     ]
 
+    where all points are 2d arrays.
 
-def rearrange_pts_new(pts: np.array):
-    new_pts = np.array(
-        [(x, y) for x, y in pts], dtype=[("x", np.float32), ("y", np.float32)]
+    we do this by separating the points by y indexes to left and right points (2 points for each),
+    then separating each pairs to top and bottom ones.
+    """
+
+    # make the array more structural so that it's easier to work with (e.g. sorting)
+    # i.e.
+    # [[x y], ...] -> [(x, y), ...]
+    new_points = np.array(
+        [(x, y) for x, y in points], dtype=[("x", np.float32), ("y", np.float32)]
     )
-    boxes = np.sort(new_pts.reshape(17, 4), order="y")
-    boxes = np.sort(boxes.reshape(17, 2, 2), order="x", axis=2)
-    boxes = boxes.reshape(17, 4)
+    # sort to the lefts and the rights
+    boxes = np.sort(new_points.reshape(17, 4), order="x", axis=1)
+    # sort to the tops and the buttoms
+    boxes = np.sort(boxes.reshape(17, 2, 2), order="y", axis=2)
+
+    # now we have an array looks like this:
+    # [[[tl bl],
+    #   [tr br]],...]
+    #
+    # but we want this:
+    # [[[tl tr],
+    #   [bl br]],...]
+    #
+    # if there's no adjustment, then when it's flatten, the order won't be correct
+    boxes = np.transpose(boxes, (0, 2, 1)).reshape(17, 4)
+    # sort the arrage of points by the heights of their centers
     center_y = np.mean(boxes["y"], axis=1)
     boxes = boxes[np.argsort(center_y, axis=0)].reshape(-1)
     return np.array([[x, y] for x, y in boxes])

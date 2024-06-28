@@ -36,11 +36,8 @@ optimizer = optim.Adam(model.parameters(), lr=1e-4)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.6, last_epoch=-1)
 criterion = LossAll()
 
-train_loader = DataLoader(
-    train_dataset, batch_size=2, shuffle=True, collate_fn=collater
-)
+train1_loader = DataLoader(train_dataset, batch_size=2)
+train2_loader = DataLoader(train_dataset, batch_size=2, collate_fn=collater)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True, collate_fn=collater)
 now = datetime.now().strftime("%Y_%m%d_%H%M%S")
 save_path = f"big_brain_net_{now}.pt"
-
-print(next(iter(train_loader)))
