@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision import models
+from torchvision.models.resnet import ResNet, BasicBlock
 
 __all__ = ["BigBrainNet"]
 
@@ -58,11 +59,16 @@ class SkipConnection(nn.Module):
         )
         self.layer2 = nn.Sequential(
             nn.Conv2d(2 * out_channels, out_channels, kernel_size=1, stride=1),
+            norm_methods.get(normalization, nn.Identity()),
             nn.ReLU(inplace=True),
         )
 
     def forward(self, x_main, x_side):
-        x_main = self.layer1(F.interpolate(x_main, x_side.shape[2:]))
+        x_main = self.layer1(
+            F.interpolate(
+                x_main, x_side.shape[2:], mode="bilinear", align_corners=False
+            )
+        )
         outputs = self.layer2(torch.cat((x_side, x_main), dim=1))
         return outputs
 
@@ -110,17 +116,41 @@ class Decoder(nn.Module):
         fill_fc_weight(self.center_offset_fc)
         fill_fc_weight(self.corner_offset_fc)
 
-        def forward(self, x):
-            combination1 = self.layer1(x[-1], x[-2])
-            combination2 = self.layer2(combination1, x[-3])
-            combination3 = self.layer3(combination2, x[-4])
-            outputs = {
-                "hm": self.heat_map_fc(combination3),
-                "reg": self.center_offset_fc(combination3),
-                "wh": self.corner_offset_fc(combination3),
-            }
+    def forward(self, x):
+        combination1 = self.layer1(x[-1], x[-2])
+        combination2 = self.layer2(combination1, x[-3])
+        combination3 = self.layer3(combination2, x[-4])
+        outputs = {
+            "hm": self.heat_map_fc(combination3),
+            "reg": self.center_offset_fc(combination3),
+            "wh": self.corner_offset_fc(combination3),
+        }
 
-            return outputs
+        return outputs
+
+
+class ResnetWithSkip34(ResNet):
+    def __init__(self):
+        super().__init__(BasicBlock, [3, 4, 6, 3])
+
+    def forward(self, x):
+        feat = []
+        feat.append(x)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        feat.append(x)
+        x = self.maxpool(x)
+        x = self.layer1(x)
+        feat.append(x)
+        x = self.layer2(x)
+        feat.append(x)
+        x = self.layer3(x)
+        feat.append(x)
+        x = self.layer4(x)
+        feat.append(x)
+
+        return feat
 
 
 class BigBrainNet(nn.Module):
@@ -136,7 +166,8 @@ class BigBrainNet(nn.Module):
         assert down_ratio in (2, 4, 6, 8), "The only down ratios supported: 2, 4, 6, 8"
         channels = (3, 64, 64, 128, 256, 512)
         index = int(np.log2(down_ratio))
-        self.encoder = models.resnet34(weights=weights)
+        self.encoder = ResnetWithSkip34()
+        self.encoder.load_state_dict(models.resnet34(weights=weights).state_dict())
         self.decoder = Decoder(
             channels[index], mid_channels, final_kernel_size, num_classes
         )
