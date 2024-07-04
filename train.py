@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 
+import numpy as np
 import torch
 from torch import optim
 from torch.utils.data import DataLoader, random_split
@@ -14,15 +15,10 @@ os.environ["TORCH_HOME"] = "./weights"
 
 
 def collater(data):
-    out_data_dict = {}
-    for name in data[0]:
-        out_data_dict[name] = []
-    for sample in data:
-        for name in sample:
-            out_data_dict[name].append(torch.from_numpy(sample[name]))
-    for name in out_data_dict:
-        out_data_dict[name] = torch.stack(out_data_dict[name], dim=0)
-    return out_data_dict
+    return {
+        key: torch.tensor(np.array([datum[key] for datum in data]))
+        for key in data[0].keys()
+    }
 
 
 train_dataset = BaseDataset("./data", phase="train")
@@ -63,3 +59,9 @@ for epoch in range(1, 25):
         predictions = model(data["input"])
         loss = criterion(predictions, data)
         val_loss.append(loss)
+
+    print(
+        f"Epoch: {epoch}, "
+        f"Train Loss: {train_loss/len(train_loss):.2f} "
+        f"Val Loss: {val_loss/len(val_loss):.2f}"
+    )
