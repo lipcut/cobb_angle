@@ -3,7 +3,7 @@ import numpy as np
 from numpy import random
 
 
-def rescale_pts(pts, down_ratio):
+def rescale_pts(pts: np.ndarray, down_ratio):
     return np.asarray(pts, np.float32) / float(down_ratio)
 
 
@@ -24,10 +24,10 @@ class ConvertImgFloat(object):
 
 class RandomContrast(object):
     def __init__(self, lower=0.5, upper=1.5):
+        assert upper >= lower, "contrast upper must be >= lower."
+        assert lower >= 0, "contrast lower must be non-negative."
         self.lower = lower
         self.upper = upper
-        assert self.upper >= self.lower, "contrast upper must be >= lower."
-        assert self.lower >= 0, "contrast lower must be non-negative."
 
     def __call__(self, img, pts):
         if random.randint(2):
@@ -103,15 +103,14 @@ class Expand(object):
             np.max(pts[:, 0]) + int(x1) > w - 1 or np.max(pts[:, 1]) + int(y1) > h - 1
         ):  # keep all the pts
             return img, pts
-        else:
-            expand_img = np.zeros(
-                shape=(int(h * ratio), int(w * ratio), c), dtype=img.dtype
-            )
-            expand_img[:, :, :] = self.mean
-            expand_img[int(y1) : int(y1 + h), int(x1) : int(x1 + w)] = img
-            pts[:, 0] += int(x1)
-            pts[:, 1] += int(y1)
-            return expand_img, pts
+        expand_img = np.zeros(
+            shape=(int(h * ratio), int(w * ratio), c), dtype=img.dtype
+        )
+        expand_img[:, :, :] = self.mean
+        expand_img[int(y1) : int(y1 + h), int(x1) : int(x1 + w)] = img
+        pts[:, 0] += int(x1)
+        pts[:, 1] += int(y1)
+        return expand_img, pts
 
 
 class RandomSampleCrop(object):
