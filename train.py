@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from torch import optim
 from torch.utils.data import DataLoader, random_split
-from tqdm import tqdm
 
 from cobb_angle.data import BaseDataset
 from cobb_angle.loss import LossAll
@@ -43,9 +42,13 @@ now = datetime.now().strftime("%Y_%m%d_%H%M%S")
 save_file = f"bigbrain_net_{now}.pt"
 save_dir = "weights"
 
-for epoch in range(1, 25 + 1):
+EPOCH = 25
+for epoch in range(1, EPOCH + 1):
+    print(f"Epoch {epoch}/{EPOCH}")
+    print("-" * 10)
+
     train_loss = []
-    for data in tqdm(train_loader):
+    for data in train_loader:
         data = {key: value.to(device) for key, value in data.items()}
         optimizer.zero_grad()
         model.train()
@@ -56,7 +59,7 @@ for epoch in range(1, 25 + 1):
         train_loss.append(loss)
 
     val_loss = []
-    for data in tqdm(val_loader):
+    for data in val_loader:
         data = {key: value.to(device) for key, value in data.items()}
         model.eval()
         with torch.no_grad():
@@ -65,7 +68,7 @@ for epoch in range(1, 25 + 1):
             val_loss.append(loss)
 
     print(
-        f"Epoch: {epoch}, "
         f"Train Loss: {sum(train_loss)/len(train_loss):.2f} "
         f"Val Loss: {sum(val_loss)/len(val_loss):.2f}"
+        "\n"
     )
