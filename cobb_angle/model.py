@@ -74,14 +74,6 @@ class Decoder(nn.Module):
         self.layer1 = SkipConnection(512, 256)
         self.layer2 = SkipConnection(256, 128)
         self.layer3 = SkipConnection(128, 64)
-        self.heat_map_fc = make_fc(
-            in_channels,
-            mid_channels,
-            num_classes,
-            kernel_size=3,
-            final_kernel_size=final_kernel_size,
-            padding=1,
-        )
 
         def _make_fc(
             in_channels: int,
@@ -108,6 +100,15 @@ class Decoder(nn.Module):
                     bias=True,
                 ),
             )
+
+        self.heat_map_fc = _make_fc(
+            in_channels,
+            mid_channels,
+            num_classes,
+            kernel_size=3,
+            final_kernel_size=final_kernel_size,
+            padding=1,
+        )
 
         self.center_offset_fc = _make_fc(
             in_channels,
