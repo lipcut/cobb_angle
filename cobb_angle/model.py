@@ -1,9 +1,11 @@
+from functools import partial
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision import models
-from torchvision.models.resnet import ResNet, BasicBlock
+from torchvision.models.resnet import BasicBlock, ResNet
 
 __all__ = ["BigBrainNet"]
 
@@ -35,7 +37,7 @@ def make_fc(
     )
 
 
-def fill_fc_weight(layers: nn.Sequential):
+def fill_fc_weight(layers: nn.Sequential) -> None:
     for layer in layers:
         if isinstance(layer, nn.Conv2d) and layer.bias is not None:
             nn.init.constant_(layer.bias, 0)
@@ -43,27 +45,41 @@ def fill_fc_weight(layers: nn.Sequential):
 
 class SkipConnection(nn.Module):
     def __init__(
-        self, in_channels: int, out_channels: int, normalization: str = "batch_norm"
-    ):
+        self,
+        in_channels: int,
+        out_channels: int,
+        normalization: str = "batch_norm",
+        activation: str = "relu",
+    ) -> None:
         # vaild normalization methods: batch_norm, group_norm, instance_norm
         super().__init__()
         norm_methods = {
-            "batch_norm": nn.BatchNorm2d(out_channels),
-            "group_norm": nn.GroupNorm(num_groups=32, num_channels=out_channels),
-            "instance_norm": nn.InstanceNorm2d(num_features=out_channels),
+            "batch_norm": partial(nn.BatchNorm2d, num_features=out_channels),
+            "group_norm": partial(
+                nn.GroupNorm, num_groups=32, num_channels=out_channels
+            ),
+            "instance_norm": partial(nn.InstanceNorm2d, num_features=out_channels),
         }
+
+        # vaild activations methods: relu, gelu
+        activations_methods = {
+            "relu": partial(nn.ReLU, inplace=True),
+            "gelu": nn.GELU,
+        }
+
         self.layer1 = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=1),
-            norm_methods.get(normalization, nn.Identity()),
-            nn.ReLU(inplace=True),
-        )
-        self.layer2 = nn.Sequential(
-            nn.Conv2d(2 * out_channels, out_channels, kernel_size=1, stride=1),
-            norm_methods.get(normalization, nn.Identity()),
-            nn.ReLU(inplace=True),
+            norm_methods.get(normalization, nn.Identity)(),
+            activations_methods.get(activation)(),
         )
 
-    def forward(self, x_main, x_side):
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(2 * out_channels, out_channels, kernel_size=1, stride=1),
+            norm_methods.get(normalization, nn.Identity)(),
+            activations_methods.get(activation)(),
+        )
+
+    def forward(self, x_main: torch.Tensor, x_side: torch.Tensor) -> torch.Tensor:
         x_main = self.layer1(
             F.interpolate(
                 x_main, x_side.shape[2:], mode="bilinear", align_corners=False
@@ -80,7 +96,7 @@ class Decoder(nn.Module):
         mid_channels: int,
         final_kernel_size: int,
         num_classes: int,
-    ):
+    ) -> None:
         super().__init__()
         self.layer1 = SkipConnection(512, 256)
         self.layer2 = SkipConnection(256, 128)
@@ -93,6 +109,7 @@ class Decoder(nn.Module):
             final_kernel_size=final_kernel_size,
             padding=1,
         )
+
         self.center_offset_fc = make_fc(
             in_channels,
             mid_channels,
@@ -135,11 +152,9 @@ class ResnetWithSkip34(ResNet):
 
     def forward(self, x):
         feat = []
-        feat.append(x)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        feat.append(x)
         x = self.maxpool(x)
         x = self.layer1(x)
         feat.append(x)
@@ -174,5 +189,5 @@ class BigBrainNet(nn.Module):
 
     def forward(self, x):
         x = self.encoder(x)
-        outputs = self.decoder(x)
-        return outputs
+        x = self.decoder(x)
+        return x
