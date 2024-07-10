@@ -10,33 +10,6 @@ from torchvision.models.resnet import BasicBlock, ResNet
 __all__ = ["BigBrainNet"]
 
 
-def make_fc(
-    in_channels: int,
-    mid_channels: int,
-    num_classes: int,
-    kernel_size: int,
-    final_kernel_size: int,
-    padding: int,
-):
-    return nn.Sequential(
-        nn.Conv2d(
-            in_channels,
-            mid_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            bias=True,
-        ),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(
-            mid_channels,
-            num_classes,
-            kernel_size=final_kernel_size,
-            padding=final_kernel_size // 2,
-            bias=True,
-        ),
-    )
-
-
 def fill_fc_weight(layers: nn.Sequential) -> None:
     for layer in layers:
         if isinstance(layer, nn.Conv2d) and layer.bias is not None:
@@ -110,7 +83,33 @@ class Decoder(nn.Module):
             padding=1,
         )
 
-        self.center_offset_fc = make_fc(
+        def _make_fc(
+            in_channels: int,
+            mid_channels: int,
+            num_classes: int,
+            kernel_size: int,
+            final_kernel_size: int,
+            padding: int,
+        ):
+            return nn.Sequential(
+                nn.Conv2d(
+                    in_channels,
+                    mid_channels,
+                    kernel_size=kernel_size,
+                    padding=padding,
+                    bias=True,
+                ),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(
+                    mid_channels,
+                    num_classes,
+                    kernel_size=final_kernel_size,
+                    padding=final_kernel_size // 2,
+                    bias=True,
+                ),
+            )
+
+        self.center_offset_fc = _make_fc(
             in_channels,
             mid_channels,
             2 * num_classes,
@@ -119,7 +118,7 @@ class Decoder(nn.Module):
             padding=1,
         )
 
-        self.corner_offset_fc = make_fc(
+        self.corner_offset_fc = _make_fc(
             in_channels,
             mid_channels,
             4 * 2,
