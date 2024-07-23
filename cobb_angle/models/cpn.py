@@ -85,7 +85,7 @@ class CascadedPyramidNetwork(nn.Module):
 
 
     def forward(self, x):
-        x1, x2, x3, x4 = self.backbone(x)
+        x1, x2, x3, x4 = self.backbone(x).feature_maps
         x4 = self.res1(x4)
 
         x = self.upsamplex2(self.res2(x4)) + x3
