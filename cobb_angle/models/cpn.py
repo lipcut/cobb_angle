@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import partial
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -15,21 +15,36 @@ def make_residual_blocks(
     blocks: int,
     stride: int = 1,
     dilation: int = 1,
-    groups: int = 1,
-    base_width: int = 64,
+    downsample: Optional[nn.Module] = None,
     norm_layer: Optional[nn.Module] = None,
 ) -> nn.Sequential:
+    if norm_layer is None:
+        norm_layer = nn.BatchNorm2d
+
+    if stride != 1 or inplanes != planes:
+        downsample = nn.Sequential(
+            nn.Conv2d(inplanes, planes, kernel_size=1, stride=stride),
+            norm_layer(planes),
+        )
+
     layers = []
+
     layers.append(
-        BasicBlock(inplanes, planes, stride, groups, base_width, dilation, norm_layer)
+        BasicBlock(
+            inplanes,
+            planes,
+            stride=stride,
+            downsample=downsample,
+            dilation=dilation,
+            norm_layer=norm_layer,
+        )
     )
+
     for _ in range(1, blocks):
         layers.append(
             BasicBlock(
                 planes,
                 planes,
-                groups=groups,
-                base_width=base_width,
                 dilation=dilation,
                 norm_layer=norm_layer,
             )
@@ -38,7 +53,7 @@ def make_residual_blocks(
     return nn.Sequential(*layers)
 
 
-def make_backbone(model: str):
+def make_backbone(model: str) -> nn.Module:
     weights_name: dict[str, str] = {
         "resnet18": "microsoft/resnet-18",
         "resnet34": "microsoft/resnet-34",
@@ -48,6 +63,36 @@ def make_backbone(model: str):
     return AutoBackbone.from_pretrained(
         weights_name[model], out_features=["stage1", "stage2", "stage3", "stage4"]
     )
+
+
+def spatial_softmax_2d(
+    input: torch.Tensor,
+    temperature: torch.Tensor = torch.tensor(1.0),
+) -> torch.Tensor:
+    batch_size, channels, height, witdth = input.shape
+    x: torch.Tensor = input.view(batch_size, channels, -1)
+    x: torch.Tensor = F.softmax(x * temperature, dim=-1)
+
+    return x.view(batch_size, channels, height, witdth)
+
+
+def dsnt(input: torch.Tensor) -> torch.Tensor:
+    batch_size, channels, height, width = input.shape
+    grid: Tuple[torch.Tensor] = torch.meshgrid(
+        torch.arange(1, width + 1), torch.arange(1, height + 1), indexing="xy"
+    )
+
+    pos_x: torch.Tensor = ((2 * grid[0] - (width + 1)) / width).flatten()
+    pos_y: torch.Tensor = ((2 * grid[1] - (height + 1)) / height).flatten()
+
+    input: torch.Tensor = input.view(batch_size, channels, -1)
+
+    expected_x: torch.Tensor = torch.sum(pos_x * input, dim=-1, keepdim=True)
+    expected_y: torch.Tensor = torch.sum(pos_y * input, dim=-1, keepdim=True)
+
+    output: torch.Tensor = torch.cat((expected_x, expected_y), dim=-1)
+
+    return output
 
 
 @dataclass(frozen=True)
@@ -62,8 +107,8 @@ class CascadedPyramidNetwork(nn.Module):
         super().__init__()
         self.backbone = make_backbone(config.backbone_model)
         self.res1 = make_residual_blocks(512, 512, blocks=1)
-        self.upsamplex2 = F.interpolate(
-            scale_factor=2, mode="bilinear", align_corners=True
+        self.upsamplex2 = partial(
+            F.interpolate, scale_factor=2, mode="bilinear", align_corners=True
         )
         self.upsample_to = partial(F.interpolate, mode="bilinear", align_corners=True)
 
@@ -74,15 +119,12 @@ class CascadedPyramidNetwork(nn.Module):
         self.cascade2 = make_residual_blocks(128, 128, blocks=2)
 
         self.res4 = make_residual_blocks(128, 64, blocks=1)
-        self.cascade3 = make_residual_blocks(64, 4, blocks=1)
+        self.cascade3 = make_residual_blocks(64, 64, blocks=1)
 
         self.res5 = make_residual_blocks(64, 64, blocks=1)
 
         self.output1 = make_residual_blocks(64, config.landmarks_count, blocks=3)
         self.output2 = make_residual_blocks(512, config.landmarks_count, blocks=3)
-
-        self.dsnt = None  # TODO: Implement this bad boy
-
 
     def forward(self, x):
         x1, x2, x3, x4 = self.backbone(x).feature_maps
@@ -100,7 +142,7 @@ class CascadedPyramidNetwork(nn.Module):
         cascaded4 = self.upsamplex2(self.res5(x))
         stage1 = self.output1(cascaded4)
 
-        _, _, height, width = cascaded4.size()
+        _, _, height, width = cascaded4.shape
 
         cascaded1 = self.upsample_to(cascaded1, size=(height, width))
         cascaded2 = self.upsample_to(cascaded2, size=(height, width))
@@ -109,12 +151,16 @@ class CascadedPyramidNetwork(nn.Module):
         stage2 = torch.cat((cascaded1, cascaded2, cascaded3, cascaded4), dim=1)
         stage2 = self.output2(stage2)
 
-        # stage1 = self.dsnt(stage1)
-        # stage2 = self.dsnt(stage2)
+        stage1 = dsnt(spatial_softmax_2d(stage1))
+        stage2 = dsnt(spatial_softmax_2d(stage2))
 
         return stage1, stage2
 
 
-
 if __name__ == "__main__":
-    print(f"hello {torch.randn(2, 3)}")
+    fake_image = torch.randn(1, 3, 256, 256)
+    config = CascadedPyramidNetworkConfig()
+    model = CascadedPyramidNetwork(config)
+    output = model(fake_image)
+    print(f"{output[0].shape = }")
+    print(f"{output[1].shape = }")
