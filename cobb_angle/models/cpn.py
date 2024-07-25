@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import partial
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -65,36 +65,6 @@ def make_backbone(model: str) -> nn.Module:
     )
 
 
-def spatial_softmax_2d(
-    input: torch.Tensor,
-    temperature: torch.Tensor = torch.tensor(1.0),
-) -> torch.Tensor:
-    batch_size, channels, height, witdth = input.shape
-    x: torch.Tensor = input.view(batch_size, channels, -1)
-    x: torch.Tensor = F.softmax(x * temperature, dim=-1)
-
-    return x.view(batch_size, channels, height, witdth)
-
-
-def dsnt(input: torch.Tensor) -> torch.Tensor:
-    batch_size, channels, height, width = input.shape
-    grid: Tuple[torch.Tensor] = torch.meshgrid(
-        torch.arange(1, width + 1), torch.arange(1, height + 1), indexing="xy"
-    )
-
-    pos_x: torch.Tensor = ((2 * grid[0] - (width + 1)) / width).flatten()
-    pos_y: torch.Tensor = ((2 * grid[1] - (height + 1)) / height).flatten()
-
-    input: torch.Tensor = input.view(batch_size, channels, -1)
-
-    expected_x: torch.Tensor = torch.sum(pos_x * input, dim=-1, keepdim=True)
-    expected_y: torch.Tensor = torch.sum(pos_y * input, dim=-1, keepdim=True)
-
-    output: torch.Tensor = torch.cat((expected_x, expected_y), dim=-1)
-
-    return output
-
-
 @dataclass(frozen=True)
 class CascadedPyramidNetworkConfig:
     backbone_model: str = "resnet18"
@@ -150,9 +120,6 @@ class CascadedPyramidNetwork(nn.Module):
 
         stage2 = torch.cat((cascaded1, cascaded2, cascaded3, cascaded4), dim=1)
         stage2 = self.output2(stage2)
-
-        stage1 = dsnt(spatial_softmax_2d(stage1))
-        stage2 = dsnt(spatial_softmax_2d(stage2))
 
         return stage1, stage2
 

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from dsnt import render_gaussian_2d, dsnt
 
 __all__ = ["LossAll"]
 
@@ -60,7 +61,7 @@ class FocalLoss(nn.Module):
 
 
 class WingLoss(nn.Module):
-    def __init__(self, w: int, eps: int) -> None:
+    def __init__(self, w: int = 15, eps: int = 3) -> None:
         super().__init__()
         self.w = w
         self.eps = eps
@@ -70,6 +71,36 @@ class WingLoss(nn.Module):
         condition_term = torch.clamp(torch.abs(diff) - self.w, min=0)
 
         return condition_term + self.w * torch.log(1 + self.w / self.eps)
+
+
+class JSDivLoss2D(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        mixture_distribution = 0.5 * (input + target)
+        term1 = F.kl_div(input.log(), mixture_distribution, reduction="none").sum(
+            dim=(-1, -2)
+        )
+        term2 = F.kl_div(target.log(), mixture_distribution, reduction="none").sum(
+            dim=(-1, -2)
+        )
+
+        return 0.5 * term1 + 0.5 * term2
+
+
+class WingLossWithRegularization(nn.Module):
+    def __init__(self, reg_coef: float = 1.0) -> None:
+        self.reg_coef = reg_coef
+
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        wing_loss = WingLoss()
+        js_div = JSDivLoss2D()
+
+        target_heatmap = render_gaussian_2d(target)
+
+        return wing_loss(dsnt(input), target) + self.reg_coef * js_div(input, target_heatmap)
 
 
 class LossAll(nn.Module):
