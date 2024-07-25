@@ -59,6 +59,19 @@ class FocalLoss(nn.Module):
         return loss
 
 
+class WingLoss(nn.Module):
+    def __init__(self, w: int, eps: int) -> None:
+        super().__init__()
+        self.w = w
+        self.eps = eps
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        diff = input - target
+        condition_term = torch.clamp(torch.abs(diff) - self.w, min=0)
+
+        return condition_term + self.w * torch.log(1 + self.w / self.eps)
+
+
 class LossAll(nn.Module):
     def __init__(self):
         super(LossAll, self).__init__()
