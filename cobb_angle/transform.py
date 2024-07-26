@@ -1,192 +1,130 @@
-import cv2
+from typing import Optional, Tuple
+
 import numpy as np
-from numpy import random
+import torch
+from PIL.Image import Image as PILImage
+from torchvision.transforms import v2
 
 
-def rescale_pts(pts: np.ndarray, down_ratio):
-    return np.asarray(pts, np.float32) / float(down_ratio)
+def spinet16_train_transforms(
+    image: PILImage, landmarks: np.ndarray
+) -> Tuple[torch.Tensor, ...]:
+    width, height = image.size
+    landmarks_image = torch.zeros(height, width)
+    indexes = np.transpose(landmarks).tolist()
+    landmarks_image[indexes] = 1.0
+    basic_transforms = v2.Compose(
+        [v2.ToImage(), v2.ToDtype(torch.float32, scale=True), v2.RandomHorizontalFlip()]
+    )
+    image, landmarks_image = basic_transforms(image, landmarks_image)
+    image = torch.clamp(image, min=0.0, max=255.0) / 255.0
+    image_transforms = v2.Compose(
+        [
+            v2.RandomPhotometricDistort(),
+            v2.Resize(size=(1024, 512)),
+            v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ]
+    )
+    image = image_transforms(image)
+    landmarks = torch.argwhere(landmarks_image.squeeze() == 1)
+    landmarks = landmarks_resize(
+        landmarks, orig_dim=(height, width), new_dim=(1024, 512)
+    )
+
+    return image, landmarks
 
 
-class Compose(object):
-    def __init__(self, transforms):
-        self.transforms = transforms
+def spinet16_val_transforms(
+    image: PILImage, landmarks: np.ndarray
+) -> Tuple[torch.Tensor, ...]:
+    width, height = image.size
+    transforms = v2.Compose(
+        [
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Resize(size=(1024, 512)),
+        ]
+    )
+    image = transforms(image)
+    image = torch.clamp(image, min=0.0, max=255.0) / 255.0
+    landmarks = landmarks_resize(
+        landmarks, orig_dim=(height, width), new_dim=(1024, 512)
+    )
+    landmarks = landmarks_rearrange(landmarks)
 
-    def __call__(self, img, pts):
-        for t in self.transforms:
-            img, pts = t(img, pts)
-        return img, pts
-
-
-class ConvertImgFloat(object):
-    def __call__(self, img, pts):
-        return img.astype(np.float32), pts.astype(np.float32)
-
-
-class RandomContrast(object):
-    def __init__(self, lower=0.5, upper=1.5):
-        assert upper >= lower, "contrast upper must be >= lower."
-        assert lower >= 0, "contrast lower must be non-negative."
-        self.lower = lower
-        self.upper = upper
-
-    def __call__(self, img, pts):
-        if random.randint(2):
-            alpha = random.uniform(self.lower, self.upper)
-            img *= alpha
-        return img, pts
+    return image, landmarks
 
 
-class RandomBrightness(object):
-    def __init__(self, delta=32):
-        assert delta >= 0.0
-        assert delta <= 255.0
-        self.delta = delta
+def spinenet16_test_transforms(image: PILImage) -> torch.Tensor:
+    transforms = v2.Compose(
+        [
+            v2.PILToTensor(),
+            v2.Resize(size=(1024, 512)),
+            v2.Lambda(lambd=lambda x: x / 255),
+            v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ]
+    )
 
-    def __call__(self, img, pts):
-        if random.randint(2):
-            delta = random.uniform(-self.delta, self.delta)
-            img += delta
-        return img, pts
-
-
-class SwapChannels(object):
-    def __init__(self, swaps):
-        self.swaps = swaps
-
-    def __call__(self, img):
-        img = img[:, :, self.swaps]
-        return img
+    return transforms(image)
 
 
-class RandomLightingNoise(object):
-    def __init__(self):
-        self.perms = ((0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0))
-
-    def __call__(self, img, pts):
-        if random.randint(2):
-            swap = self.perms[random.randint(len(self.perms))]
-            shuffle = SwapChannels(swap)
-            img = shuffle(img)
-        return img, pts
-
-
-class PhotometricDistort(object):
-    def __init__(self):
-        self.pd = RandomContrast()
-        self.rb = RandomBrightness()
-        self.rln = RandomLightingNoise()
-
-    def __call__(self, img, pts):
-        img, pts = self.rb(img, pts)
-        if random.randint(2):
-            distort = self.pd
-        else:
-            distort = self.pd
-        img, pts = distort(img, pts)
-        img, pts = self.rln(img, pts)
-        return img, pts
+def landmarks_resize(
+    landmarks: torch.Tensor,
+    orig_dim: Tuple[int, ...] | torch.Tensor,
+    new_dim: Tuple[int, ...] | torch.Tensor,
+    padding: Optional[Tuple[int, ...] | torch.Tensor] = None,
+) -> torch.Tensor:
+    orig_dim = torch.Tensor(orig_dim)
+    new_dim = torch.Tensor(new_dim)
+    if padding is None:
+        padding = torch.zeros(len(orig_dim.size()))
+    else:
+        padding = torch.Tensor(padding)
+    t_landmarks = landmarks + padding
+    t_landmarks = t_landmarks * (new_dim / (orig_dim + 2 * padding))
+    return t_landmarks
 
 
-class Expand(object):
-    def __init__(self, max_scale=1.5, mean=(0.5, 0.5, 0.5)):
-        self.mean = mean
-        self.max_scale = max_scale
+def landmarks_rearrange(landmarks: np.ndarray) -> np.ndarray:
+    r"""rearrange the points so that the output array will be a the consective array of
+    top left (tl), top right (tr), bottom left (bl), bottom right (br).
+    i.e.
+    output = [
+        tl,
+        tr,
+        bl,
+        br,
+        ...
+     ]
 
-    def __call__(self, img, pts):
-        if random.randint(2):
-            return img, pts
-        h, w, c = img.shape
-        ratio = random.uniform(1, self.max_scale)
-        y1 = random.uniform(0, h * ratio - h)
-        x1 = random.uniform(0, w * ratio - w)
-        if (
-            np.max(pts[:, 0]) + int(x1) > w - 1 or np.max(pts[:, 1]) + int(y1) > h - 1
-        ):  # keep all the pts
-            return img, pts
-        expand_img = np.zeros(
-            shape=(int(h * ratio), int(w * ratio), c), dtype=img.dtype
-        )
-        expand_img[:, :, :] = self.mean
-        expand_img[int(y1) : int(y1 + h), int(x1) : int(x1 + w)] = img
-        pts[:, 0] += int(x1)
-        pts[:, 1] += int(y1)
-        return expand_img, pts
+    where all points are 2d arrays.
 
+    we do this by separating the points by y indexes to left and right points (2 points for each),
+    then separating each pairs to top and bottom ones.
+    """
 
-class RandomSampleCrop(object):
-    def __init__(self, ratio=(0.5, 1.5), min_win=0.9):
-        self.sample_options = (
-            # using entire original input image
-            None,
-            # sample a patch s.t. MIN jaccard w/ obj in .1,.3,.4,.7,.9
-            # (0.1, None),
-            # (0.3, None),
-            (0.7, None),
-            (0.9, None),
-            # randomly sample a patch
-            (None, None),
-        )
-        self.ratio = ratio
-        self.min_win = min_win
+    # make the array more structural so that it's easier to work with (e.g. sorting)
+    # i.e.
+    # [[x y], ...] -> [(x, y), ...]
+    new_points = np.array(
+        [(x, y) for x, y in landmarks], dtype=[("x", np.float32), ("y", np.float32)]
+    )
+    # sort to the lefts and the rights
+    boxes = np.sort(new_points.reshape(17, 4), order="x", axis=1)
+    # sort to the tops and the buttoms
+    boxes = np.sort(boxes.reshape(17, 2, 2), order="y", axis=2)
 
-    def __call__(self, img, pts):
-        height, width, _ = img.shape
-        while True:
-            mode = random.choice(self.sample_options)
-            if mode is None:
-                return img, pts
-            for _ in range(50):
-                current_img = img
-                current_pts = pts
-                w = random.uniform(self.min_win * width, width)
-                h = random.uniform(self.min_win * height, height)
-                if h / w < self.ratio[0] or h / w > self.ratio[1]:
-                    continue
-                y1 = random.uniform(height - h)
-                x1 = random.uniform(width - w)
-                rect = np.array([int(y1), int(x1), int(y1 + h), int(x1 + w)])
-                current_img = current_img[rect[0] : rect[2], rect[1] : rect[3], :]
-                current_pts[:, 0] -= rect[1]
-                current_pts[:, 1] -= rect[0]
-                pts_new = []
-                for pt in current_pts:
-                    if (
-                        any(pt) < 0
-                        or pt[0] > current_img.shape[1] - 1
-                        or pt[1] > current_img.shape[0] - 1
-                    ):
-                        continue
-                    else:
-                        pts_new.append(pt)
-
-                return current_img, np.asarray(pts_new, np.float32)
-
-
-class RandomMirror_w(object):
-    def __call__(self, img, pts):
-        _, w, _ = img.shape
-        if random.randint(2):
-            img = img[:, ::-1, :]
-            pts[:, 0] = w - pts[:, 0]
-        return img, pts
-
-
-class RandomMirror_h(object):
-    def __call__(self, img, pts):
-        h, _, _ = img.shape
-        if random.randint(2):
-            img = img[::-1, :, :]
-            pts[:, 1] = h - pts[:, 1]
-        return img, pts
-
-
-class Resize(object):
-    def __init__(self, h, w):
-        self.dsize = (w, h)
-
-    def __call__(self, img, pts):
-        h, w, c = img.shape
-        pts[:, 0] = pts[:, 0] / w * self.dsize[0]
-        pts[:, 1] = pts[:, 1] / h * self.dsize[1]
-        img = cv2.resize(img, dsize=self.dsize)
-        return img, np.asarray(pts)
+    # now we have an array looks like this:
+    # [[[tl bl],
+    #   [tr br]],...]
+    #
+    # but we want this:
+    # [[[tl tr],
+    #   [bl br]],...]
+    #
+    # if there's no adjustment, then when it's flatten, the order won't be correct
+    boxes = np.transpose(boxes, (0, 2, 1)).reshape(17, 4)
+    # sort the arrage of points by the heights of their centers
+    center_y = np.mean(boxes["y"], axis=1)
+    boxes = boxes[np.argsort(center_y, axis=0)].reshape(-1)
+    return np.array([[x, y] for x, y in boxes])
