@@ -5,7 +5,7 @@ import torch
 from PIL.Image import Image as PILImage
 from torchvision.transforms import v2
 
-from .utils import landmarks_rearrange, landmarks_resize
+from .landmark_utils import landmarks_rearrange, landmarks_resize
 
 
 def spine_dataset16_train_transforms(
