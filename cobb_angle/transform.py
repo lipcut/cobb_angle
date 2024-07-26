@@ -8,7 +8,7 @@ from torchvision.transforms import v2
 from .utils import landmarks_rearrange, landmarks_resize
 
 
-def spinet16_train_transforms(
+def spine_dataset16_train_transforms(
     image: PILImage, landmarks: np.ndarray
 ) -> Tuple[torch.Tensor, ...]:
     width, height = image.size
@@ -36,7 +36,7 @@ def spinet16_train_transforms(
     return image, landmarks
 
 
-def spinet16_val_transforms(
+def spine_dataset16_val_transforms(
     image: PILImage, landmarks: np.ndarray
 ) -> Tuple[torch.Tensor, ...]:
     width, height = image.size
@@ -57,7 +57,7 @@ def spinet16_val_transforms(
     return image, landmarks
 
 
-def spinenet16_test_transforms(image: PILImage) -> torch.Tensor:
+def spine_dataset16_test_transforms(image: PILImage) -> torch.Tensor:
     transforms = v2.Compose(
         [
             v2.PILToTensor(),
