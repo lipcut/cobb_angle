@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from dsnt import render_gaussian_2d, dsnt
+from .dsnt import dsnt, render_gaussian_2d
 
 __all__ = ["LossAll"]
 
@@ -90,9 +90,9 @@ class JSDivLoss2D(nn.Module):
 
 
 class WingLossWithRegularization(nn.Module):
-    def __init__(self, reg_coef: float = 1.0) -> None:
-        self.reg_coef = reg_coef
-
+    def __init__(self, regularization_coefficient: float = 1.0) -> None:
+        super().__init__()
+        self.regularization_coefficient = regularization_coefficient
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         wing_loss = WingLoss()
@@ -100,7 +100,9 @@ class WingLossWithRegularization(nn.Module):
 
         target_heatmap = render_gaussian_2d(target)
 
-        return wing_loss(dsnt(input), target) + self.reg_coef * js_div(input, target_heatmap)
+        return wing_loss(
+            dsnt(input), target
+        ) + self.regularization_coefficient * js_div(input, target_heatmap)
 
 
 class LossAll(nn.Module):
