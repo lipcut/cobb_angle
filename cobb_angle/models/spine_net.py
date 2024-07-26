@@ -7,8 +7,6 @@ from torch import nn
 from torchvision import models
 from torchvision.models.resnet import BasicBlock, ResNet
 
-__all__ = ["BigBrainNet"]
-
 
 def fill_fc_weight(layers: nn.Sequential) -> None:
     for layer in layers:
@@ -168,7 +166,7 @@ class ResnetWithSkip34(ResNet):
         return feat
 
 
-class BigBrainNet(nn.Module):
+class SpineNet(nn.Module):
     def __init__(
         self,
         weights: str,
