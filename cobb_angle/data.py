@@ -7,7 +7,7 @@ from PIL import Image
 from scipy.io import loadmat
 from torchvision.datasets.vision import VisionDataset
 
-from .utils import landmarks_rearrange
+from .landmark_utils import landmarks_rearrange
 
 
 class LandmarkDataset(VisionDataset):
@@ -38,7 +38,9 @@ class LandmarkDataset(VisionDataset):
 
         landmarks = [
             landmarks_rearrange(
-                loadmat(os.path.join(self.image_folder, image_filename))["p2"]
+                loadmat(os.path.join(self.landmarks_folder, image_filename + ".mat"))[
+                    "p2"
+                ]
             )
             for image_filename in self.image_filenames
         ]
@@ -53,6 +55,25 @@ class LandmarkDataset(VisionDataset):
             image, landmarks = self.transforms(image, landmarks)
 
         return image, landmarks, image_filename
+
+    def __getitems__(
+        self, indices: List
+    ) -> List[Tuple[List[np.ndarray], List[np.ndarray], str]]:
+        image_list = [self.data[index] for index in indices]
+        landmarks_list = [self.targets[index] for index in indices]
+        image_filename_list = [self.image_filenames[index] for index in indices]
+
+        return [
+            (
+                self.transforms(image, landmarks)
+                if self.transforms is not None
+                else (image, landmarks)
+            )
+            + (image_filename,)
+            for image, landmarks, image_filename in zip(
+                image_list, landmarks_list, image_filename_list
+            )
+        ]
 
     def __len__(self):
         return len(self.data)

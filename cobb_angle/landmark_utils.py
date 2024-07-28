@@ -1,5 +1,6 @@
 from typing import Optional, Tuple
 
+import cv2
 import numpy as np
 import torch
 
@@ -64,3 +65,29 @@ def landmarks_resize(
     t_landmarks = landmarks + padding
     t_landmarks = t_landmarks * (new_dim / (orig_dim + 2 * padding))
     return t_landmarks
+
+
+def draw_spinal(pts, out_image):
+    colors = [(0, 0, 255), (0, 255, 255), (255, 0, 255), (0, 255, 0)]
+    for i in range(4):
+        cv2.circle(out_image, (int(pts[i, 0]), int(pts[i, 1])), 3, colors[i], 1, 1)
+        cv2.putText(
+            out_image,
+            "{}".format(i + 1),
+            (int(pts[i, 0]), int(pts[i, 1])),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.3,
+            (0, 0, 0),
+            1,
+            1,
+        )
+    for i, j in zip([0, 1, 2, 3], [1, 2, 3, 0]):
+        cv2.line(
+            out_image,
+            (int(pts[i, 0]), int(pts[i, 1])),
+            (int(pts[j, 0]), int(pts[j, 1])),
+            color=colors[i],
+            thickness=1,
+            lineType=1,
+        )
+    return out_image

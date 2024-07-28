@@ -8,6 +8,7 @@ from torch import nn
 from torchvision.models.resnet import BasicBlock
 from transformers import AutoBackbone
 
+from cobb_angle.dsnt import spatial_softmax_2d
 
 def make_residual_blocks(
     inplanes: int,
@@ -69,7 +70,6 @@ def make_backbone(model: str) -> nn.Module:
 class CascadedPyramidNetworkConfig:
     backbone_model: str = "resnet18"
     landmarks_count: int = 68
-    heatmap_regularization: Optional[str] = None
 
 
 class CascadedPyramidNetwork(nn.Module):
@@ -96,6 +96,10 @@ class CascadedPyramidNetwork(nn.Module):
         self.output1 = make_residual_blocks(64, config.landmarks_count, blocks=3)
         self.output2 = make_residual_blocks(512, config.landmarks_count, blocks=3)
 
+        for layer in self.modules():
+            if isinstance(layer, nn.Conv2d):
+                nn.init.kaiming_normal_(layer.weight)
+
     def forward(self, x):
         x1, x2, x3, x4 = self.backbone(x).feature_maps
         x4 = self.res1(x4)
@@ -120,6 +124,9 @@ class CascadedPyramidNetwork(nn.Module):
 
         stage2 = torch.cat((cascaded1, cascaded2, cascaded3, cascaded4), dim=1)
         stage2 = self.output2(stage2)
+
+        stage1 = spatial_softmax_2d(stage1)
+        stage2 = spatial_softmax_2d(stage1)
 
         return stage1, stage2
 
