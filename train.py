@@ -1,7 +1,7 @@
+import logging
 import os
 from datetime import datetime
 
-import numpy as np
 import torch
 from torch import optim
 from torch.utils.data import DataLoader, random_split
@@ -43,7 +43,12 @@ now = datetime.now().strftime("%Y_%m%d_%H%M%S")
 save_file = f"bigbrain_net_{now}.pt"
 save_dir = "weights"
 
+logging.basicConfig(
+    filename=os.path.join(save_dir, "loss.txt"), level=logging.DEBUG, format=""
+)
+
 EPOCH = 5
+
 
 def train():
     for epoch in range(1, EPOCH + 1):
@@ -72,11 +77,15 @@ def train():
                 loss = criterion(predictions, targets)
                 val_loss.append(loss.item())
 
-        print(
+        results = (
             f"Train Loss: {sum(train_loss)/len(train_loss):.2f} "
             f"Val Loss: {sum(val_loss)/len(val_loss):.2f}"
             "\n"
         )
+
+        logging.debug(results)
+        print(results)
+
 
 if __name__ == "__main__":
     train()
