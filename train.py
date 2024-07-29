@@ -1,6 +1,5 @@
 import logging
 import os
-from datetime import datetime
 
 import torch
 from torch import optim
@@ -8,14 +7,12 @@ from torch.utils.data import DataLoader, random_split
 
 from cobb_angle.data import LandmarkDataset
 from cobb_angle.loss import WingLossWithRegularization
-from cobb_angle.models.cpn import (CascadedPyramidNetwork,
-                                   CascadedPyramidNetworkConfig)
-from cobb_angle.transform import \
-    spine_dataset16_test_transforms as test_transforms
-from cobb_angle.transform import \
-    spine_dataset16_train_transforms as train_trasnforms
-from cobb_angle.transform import \
-    spine_dataset16_val_transforms as val_transforms
+from cobb_angle.model import CascadedPyramidNetwork, CascadedPyramidNetworkConfig
+from cobb_angle.transform import spine_dataset16_test_transforms as test_transforms
+from cobb_angle.transform import spine_dataset16_train_transforms as train_trasnforms
+from cobb_angle.landmark_utils import landmarks_resize
+from cobb_angle.cobb_evaluate import cobb_angle_calc
+
 
 os.environ["TORCH_HOME"] = "./weights"
 
@@ -31,7 +28,7 @@ model = CascadedPyramidNetwork(config)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 
-optimizer = optim.Adam(model.parameters(), lr=1.25e-4)
+optimizer = optim.Adam(model.parameters(), lr=5e-3)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.96, last_epoch=-1)
 criterion = WingLossWithRegularization()
 
@@ -39,21 +36,22 @@ train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=2, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=1)
 
-now = datetime.now().strftime("%Y_%m%d_%H%M%S")
-save_file = f"bigbrain_net_{now}.pt"
+save_file = "bigbrain_net.pt"
 save_dir = "weights"
 
 logging.basicConfig(
     filename=os.path.join(save_dir, "loss.txt"), level=logging.DEBUG, format=""
 )
 
-EPOCH = 5
+EPOCH = 25
 
 
 def train():
     for epoch in range(1, EPOCH + 1):
         print(f"Epoch {epoch}/{EPOCH}")
         print("-" * 10)
+
+        best_val_loss = 1e5
 
         train_loss = []
         train_dataset.dataset.transforms = train_trasnforms
@@ -68,7 +66,7 @@ def train():
             train_loss.append(loss.item())
 
         val_loss = []
-        val_dataset.dataset.transforms = val_transforms
+        val_dataset.dataset.transforms = test_transforms
         for data, targets, image_filename in val_loader:
             data, targets = data.to(device), targets.to(device)
             model.eval()
@@ -77,15 +75,59 @@ def train():
                 loss = criterion(predictions, targets)
                 val_loss.append(loss.item())
 
-        results = (
-            f"Train Loss: {sum(train_loss)/len(train_loss):.2f} "
-            f"Val Loss: {sum(val_loss)/len(val_loss):.2f}"
-            "\n"
+        mean_train_loss = sum(train_loss) / len(train_loss)
+        mean_val_loss = sum(val_loss) / len(val_loss)
+
+        if epoch % 5 == 0:
+            torch.save(
+                model.state_dict(),
+                os.path.join(save_dir, f"epoch_{epoch}_" + save_file),
+            )
+
+        if mean_val_loss < best_val_loss:
+            best_val_loss = mean_val_loss
+            torch.save(
+                model.state_dict(),
+                os.path.join(save_dir, "best_" + save_file),
+            )
+
+        print(
+            f"Train Loss: {mean_train_loss:.2f} " f"Val Loss: {mean_val_loss:.2f}" "\n"
         )
 
-        logging.debug(results)
-        print(results)
+        logging.debug(f"{mean_train_loss},{mean_val_loss}")
+
+
+def eval():
+    config = CascadedPyramidNetworkConfig()
+    model = CascadedPyramidNetwork(config)
+    model.load_state_dict(
+        torch.load(os.path.join(save_dir, "epoch_25_bigbrain_net.pt"))
+    )
+    model = model.to(device)
+
+    mean_square_errors = []
+    for data, targets, image_filename in test_loader:
+        model.eval()
+        with torch.no_grad():
+            targets = targets.to(device)
+            data = data.to(device)
+
+            predictions = model(data)
+            stage2 = predictions[1]
+            batch_size, channels, height, width = stage2.shape
+            predicted_landmarks = torch.argmax(
+                stage2.view(batch_size, channels, -1), dim=-1
+            )
+            predicted_x = torch.remainder(predicted_landmarks, width)
+            predicted_y = torch.div(predicted_landmarks, width)
+            predicted_landmarks = torch.stack((predicted_x, predicted_y), dim=-1)
+            breakpoint()
+            mean_square_errors.append(((predicted_landmarks - targets) ** 2).mean())
+
+    print(f"MSE for landmarks: {sum(mean_square_errors) / len(mean_square_errors)}")
 
 
 if __name__ == "__main__":
-    train()
+    # train()
+    eval()

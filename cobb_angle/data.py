@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 import numpy as np
-from PIL import Image
+import cv2
 from scipy.io import loadmat
 from torchvision.datasets.vision import VisionDataset
 
@@ -32,7 +32,7 @@ class LandmarkDataset(VisionDataset):
 
     def _load_data(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         images = [
-            Image.open(os.path.join(self.image_folder, image_filename))
+            cv2.imread(os.path.join(self.image_folder, image_filename))
             for image_filename in self.image_filenames
         ]
 

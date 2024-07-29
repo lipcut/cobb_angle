@@ -8,13 +8,13 @@ def spatial_softmax_2d(
     input: torch.Tensor,
     temperature: torch.Tensor = torch.tensor(1.0),
 ) -> torch.Tensor:
-    batch_size, channels, height, witdth = input.shape
+    batch_size, channels, height, width = input.shape
     temperature = temperature.to(device=input.device, dtype=input.dtype)
 
     x: torch.Tensor = input.view(batch_size, channels, -1)
     x: torch.Tensor = F.softmax(x * temperature, dim=-1)
 
-    return x.view(batch_size, channels, height, witdth)
+    return x.view(batch_size, channels, height, width)
 
 
 def dsnt(input: torch.Tensor) -> torch.Tensor:
@@ -44,10 +44,10 @@ def render_gaussian_2d(
     std: float = 1.0,
 ) -> torch.Tensor:
     height, width = size
-    xs: torch.Tensor = torch.linspace(-1, 1, height)
-    ys: torch.Tensor = torch.linspace(-1, 1, width)
+    xs: torch.Tensor = torch.linspace(-1, 1, width).to(mean.device)
+    ys: torch.Tensor = torch.linspace(-1, 1, height).to(mean.device)
 
-    grid: Tuple[torch.Tensor, torch.Tensor] = torch.meshgrid([xs, ys], indexing="ij")
+    grid: Tuple[torch.Tensor, torch.Tensor] = torch.meshgrid([xs, ys], indexing="xy")
 
     pos_x, pos_y = grid
 

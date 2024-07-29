@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .dsnt import dsnt, render_gaussian_2d
+from .landmark_utils import landmarks_resize
 
 
 class WingLoss(nn.Module):
@@ -54,18 +55,20 @@ class WingLossWithRegularization(nn.Module):
     ) -> torch.Tensor:
         _, _, height, width = input[0].shape
 
-        target[..., 0] = target[..., 0] / (height / 2) - 1
-        target[..., 1] = target[..., 1] / (width / 2) - 1
+        target_resized = torch.zeros_like(target)
+        target_resized[..., 0] = 2 * target[..., 0] / width - 1
+        target_resized[..., 1] = 2 * target[..., 1] / height - 1
 
         stage1 = input[0]
         stage2 = input[1]
 
-        target_heatmap = render_gaussian_2d(target.to("cpu"), size=(height, width)).to(
-            dtype=stage1.dtype, device=stage1.device
+        target_heatmap = render_gaussian_2d(target_resized, size=(height, width)).to(
+            device=stage1.device
         )
+        target_resized = target_resized.to(device=stage1.device)
 
         return (
             self.regularization_coefficient * self.js_div(stage2, target_heatmap)
-            + self.wing_loss(dsnt(stage1), target)
-            + self.wing_loss(dsnt(stage2), target)
+            + self.wing_loss(dsnt(stage1), target_resized)
+            + self.wing_loss(dsnt(stage2), target_resized)
         )
