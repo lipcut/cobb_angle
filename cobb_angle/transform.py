@@ -31,7 +31,6 @@ def spine_dataset16_train_transforms(
     image = image_transforms(image)
     landmarks = torch.argwhere(landmarks_image.squeeze() == 1)
     landmarks = torch.flip(landmarks, dims=(-1,))
-    breakpoint()
     landmarks = landmarks_resize(
         landmarks, orig_dim=(height, width), new_dim=(512, 256)
     )

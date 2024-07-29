@@ -1,6 +1,7 @@
 import logging
 import os
 
+import matplotlib.pyplot as plt
 import torch
 from torch import optim
 from torch.utils.data import DataLoader, random_split
@@ -102,11 +103,11 @@ def eval():
     config = CascadedPyramidNetworkConfig()
     model = CascadedPyramidNetwork(config)
     model.load_state_dict(
-        torch.load(os.path.join(save_dir, "epoch_25_bigbrain_net.pt"))
+        torch.load(os.path.join(save_dir, "best_bigbrain_net.pt"))
     )
     model = model.to(device)
 
-    mean_square_errors = []
+    l2_norm = []
     for data, targets, image_filename in test_loader:
         model.eval()
         with torch.no_grad():
@@ -119,15 +120,15 @@ def eval():
             predicted_landmarks = torch.argmax(
                 stage2.view(batch_size, channels, -1), dim=-1
             )
+
             predicted_x = torch.remainder(predicted_landmarks, width)
             predicted_y = torch.div(predicted_landmarks, width)
             predicted_landmarks = torch.stack((predicted_x, predicted_y), dim=-1)
-            breakpoint()
-            mean_square_errors.append(((predicted_landmarks - targets) ** 2).mean())
+            l2_norm.append(torch.norm(predicted_landmarks - targets).mean())
 
-    print(f"MSE for landmarks: {sum(mean_square_errors) / len(mean_square_errors)}")
+    print(f"Eucliean distance for landmarks: {sum(l2_norm) / len(l2_norm)}")
 
 
 if __name__ == "__main__":
-    # train()
-    eval()
+    train()
+    # eval()
