@@ -58,11 +58,13 @@ def render_gaussian_2d(
     dist_x: torch.Tensor = (pos_x - mean[..., 0, None, None]) ** 2
     dist_y: torch.Tensor = (pos_y - mean[..., 1, None, None]) ** 2
 
-    k_s: torch.Tensor = -0.5 * torch.reciprocal(torch.tensor(std)) ** 2
+    kx_s: torch.Tensor = -0.5 * torch.reciprocal(torch.tensor(std) / (width / 2)) ** 2
+    ky_s: torch.Tensor = -0.5 * torch.reciprocal(torch.tensor(std) / (height / 2)) ** 2
 
-    gauss: torch.Tensor = torch.exp(dist_x * k_s) * torch.exp(dist_y * k_s)
+    gauss: torch.Tensor = torch.exp(dist_x * kx_s) * torch.exp(dist_y * ky_s)
     scaling: torch.Tensor = torch.reciprocal(
         torch.clamp(gauss.sum(dim=(-1, -2), keepdim=True), min=1e-32)
     )
+    breakpoint()
 
     return scaling * gauss
