@@ -23,8 +23,8 @@ def dsnt(input: torch.Tensor) -> torch.Tensor:
         torch.arange(1, width + 1), torch.arange(1, height + 1), indexing="xy"
     )
 
-    pos_x: torch.Tensor = ((2 * grid[0] - (width + 1)) / width).flatten()
-    pos_y: torch.Tensor = ((2 * grid[1] - (height + 1)) / height).flatten()
+    pos_x: torch.Tensor = (2 * (grid[0] - 1) / (width - 1) - 1).flatten()
+    pos_y: torch.Tensor = (2 * (grid[1] - 1) / (height - 1) - 1).flatten()
     pos_x: torch.Tensor = pos_x.to(device=input.device, dtype=input.dtype)
     pos_y: torch.Tensor = pos_y.to(device=input.device, dtype=input.dtype)
 

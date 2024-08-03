@@ -5,7 +5,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .dsnt import dsnt, render_gaussian_2d
-from .landmark_utils import landmarks_resize
 
 
 class WingLoss(nn.Module):

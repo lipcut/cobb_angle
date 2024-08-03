@@ -10,6 +10,7 @@ from transformers import AutoBackbone
 
 from cobb_angle.dsnt import spatial_softmax_2d
 
+
 def make_residual_blocks(
     inplanes: int,
     planes: int,
@@ -126,7 +127,7 @@ class CascadedPyramidNetwork(nn.Module):
         stage2 = self.output2(stage2)
 
         stage1 = spatial_softmax_2d(stage1)
-        stage2 = spatial_softmax_2d(stage1)
+        stage2 = spatial_softmax_2d(stage2)
 
         return stage1, stage2
 
