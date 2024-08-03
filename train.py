@@ -1,7 +1,6 @@
 import logging
 import os
 
-import matplotlib.pyplot as plt
 import torch
 from torch import optim
 from torch.utils.data import DataLoader, random_split
@@ -11,8 +10,7 @@ from cobb_angle.loss import WingLossWithRegularization
 from cobb_angle.model import CascadedPyramidNetwork, CascadedPyramidNetworkConfig
 from cobb_angle.transform import spine_dataset16_test_transforms as test_transforms
 from cobb_angle.transform import spine_dataset16_train_transforms as train_trasnforms
-from cobb_angle.landmark_utils import landmarks_resize
-from cobb_angle.cobb_evaluate import cobb_angle_calc
+from cobb_angle.dsnt import dsnt
 
 
 os.environ["TORCH_HOME"] = "./weights"
@@ -102,9 +100,7 @@ def train():
 def eval():
     config = CascadedPyramidNetworkConfig()
     model = CascadedPyramidNetwork(config)
-    model.load_state_dict(
-        torch.load(os.path.join(save_dir, "best_bigbrain_net.pt"))
-    )
+    model.load_state_dict(torch.load(os.path.join(save_dir, "best_bigbrain_net.pt")))
     model = model.to(device)
 
     l2_norm = []
@@ -117,14 +113,10 @@ def eval():
             predictions = model(data)
             stage2 = predictions[1]
             batch_size, channels, height, width = stage2.shape
-            predicted_landmarks = torch.argmax(
-                stage2.view(batch_size, channels, -1), dim=-1
-            )
-
-            predicted_x = torch.remainder(predicted_landmarks, width)
-            predicted_y = torch.div(predicted_landmarks, width)
-            predicted_landmarks = torch.stack((predicted_x, predicted_y), dim=-1)
-            l2_norm.append(torch.norm(predicted_landmarks - targets).mean())
+            predicted_landmarks = torch.zeros_like(targets)
+            predicted_landmarks[..., 0] = (dsnt(stage2)[..., 0] + 1) * (width - 1) / 2
+            predicted_landmarks[..., 1] = (dsnt(stage2)[..., 1] + 1) * (height - 1) / 2
+            l2_norm.append(torch.norm(predicted_landmarks - targets, dim=-1).mean())
 
     print(f"Eucliean distance for landmarks: {sum(l2_norm) / len(l2_norm)}")
 
