@@ -1,10 +1,11 @@
 from typing import Tuple
+import math
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .dsnt import dsnt, render_gaussian_2d
+from .dsnt import dsnt
 
 
 class WingLoss(nn.Module):
@@ -70,8 +71,8 @@ class WingLossWithRegularization(nn.Module):
         _, _, height, width = input[0].shape
 
         target_resized = torch.zeros_like(target)
-        target_resized[..., 0] = 2 * target[..., 0] / width - 1
-        target_resized[..., 1] = 2 * target[..., 1] / height - 1
+        target_resized[..., 0] = 2 * target[..., 0] / (width - 1) - 1
+        target_resized[..., 1] = 2 * target[..., 1] / (height - 1) - 1
 
         stage1, stage2 = input
 
