@@ -1,17 +1,21 @@
 import logging
 import os
 
+import cv2
 import torch
 from torch import optim
 from torch.utils.data import DataLoader, random_split
 
 from cobb_angle.data import LandmarkDataset
-from cobb_angle.loss import WingLossWithRegularization
-from cobb_angle.model import CascadedPyramidNetwork, CascadedPyramidNetworkConfig
-from cobb_angle.transform import spine_dataset16_test_transforms as test_transforms
-from cobb_angle.transform import spine_dataset16_train_transforms as train_trasnforms
 from cobb_angle.dsnt import dsnt
-
+from cobb_angle.landmark_utils import landmarks_resize
+from cobb_angle.loss import WingLossWithRegularization
+from cobb_angle.model import (CascadedPyramidNetwork,
+                              CascadedPyramidNetworkConfig)
+from cobb_angle.transform import \
+    spine_dataset16_test_transforms as test_transforms
+from cobb_angle.transform import \
+    spine_dataset16_train_transforms as train_trasnforms
 
 os.environ["TORCH_HOME"] = "./weights"
 
@@ -27,7 +31,7 @@ model = CascadedPyramidNetwork(config)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 
-optimizer = optim.Adam(model.parameters(), lr=5e-3)
+optimizer = optim.Adam(model.parameters(), lr=5e-4)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.96, last_epoch=-1)
 criterion = WingLossWithRegularization()
 
@@ -54,24 +58,26 @@ def train():
 
         train_loss = []
         train_dataset.dataset.transforms = train_trasnforms
-        for data, targets, image_filename in train_loader:
+        for data, targets, image_sizes in train_loader:
             data, targets = data.to(device), targets.to(device)
+            image_sizes = torch.stack(image_sizes, dim=-1).to(device)
             optimizer.zero_grad()
             model.train()
             predictions = model(data)
-            loss = criterion(predictions, targets)
+            loss = criterion(predictions, targets, original_size=image_sizes)
             loss.backward()
             optimizer.step()
             train_loss.append(loss.item())
 
         val_loss = []
         val_dataset.dataset.transforms = test_transforms
-        for data, targets, image_filename in val_loader:
+        for data, targets, image_sizes in val_loader:
             data, targets = data.to(device), targets.to(device)
+            image_sizes = torch.stack(image_sizes, dim=-1).to(device)
             model.eval()
             with torch.no_grad():
                 predictions = model(data)
-                loss = criterion(predictions, targets)
+                loss = criterion(predictions, targets, original_size=image_sizes)
                 val_loss.append(loss.item())
 
         mean_train_loss = sum(train_loss) / len(train_loss)
@@ -100,15 +106,16 @@ def train():
 def eval():
     config = CascadedPyramidNetworkConfig()
     model = CascadedPyramidNetwork(config)
-    model.load_state_dict(torch.load(os.path.join(save_dir, "best_bigbrain_net.pt")))
+    model.load_state_dict(torch.load(os.path.join(save_dir, "epoch_10_bigbrain_net.pt")))
     model = model.to(device)
 
     l2_norm = []
-    for data, targets, image_filename in test_loader:
+    for data, targets, image_sizes in test_loader:
         model.eval()
         with torch.no_grad():
             targets = targets.to(device)
             data = data.to(device)
+            image_sizes = tuple(torch.stack(image_sizes, dim=-1).squeeze())
 
             predictions = model(data)
             stage2 = predictions[1]
@@ -116,11 +123,18 @@ def eval():
             predicted_landmarks = torch.zeros_like(targets)
             predicted_landmarks[..., 0] = (dsnt(stage2)[..., 0] + 1) * (width - 1) / 2
             predicted_landmarks[..., 1] = (dsnt(stage2)[..., 1] + 1) * (height - 1) / 2
+            predicted_landmarks = landmarks_resize(
+                predicted_landmarks, orig_dim=(height, width), new_dim=image_sizes
+            )
+            targets = landmarks_resize(
+                targets, orig_dim=(height, width), new_dim=image_sizes
+            )
+
             l2_norm.append(torch.norm(predicted_landmarks - targets, dim=-1).mean())
 
     print(f"Eucliean distance for landmarks: {sum(l2_norm) / len(l2_norm)}")
 
 
 if __name__ == "__main__":
-    train()
-    # eval()
+    # train()
+    eval()
