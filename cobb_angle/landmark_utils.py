@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 
-def landmarks_rearrange(landmarks: np.ndarray) -> np.ndarray:
+def landmarks_rearrange(landmarks: np.ndarray | torch.Tensor) -> np.ndarray:
     r"""rearrange the points so that the output array will be a the consective array of
     top left (tl), top right (tr), bottom left (bl), bottom right (br).
     i.e.
@@ -22,32 +22,15 @@ def landmarks_rearrange(landmarks: np.ndarray) -> np.ndarray:
     we do this by separating the points by y indexes to left and right points (2 points for each),
     then separating each pairs to top and bottom ones.
     """
+    def sorter(arr):
+        arr = np.array(list(map(tuple, arr)), dtype=[("x", float), ("y", float)])
+        arr = np.sort(arr, order="y")
+        arr = np.sort(arr.reshape(-1, 2, 2), order="x")
+        return np.array(list([x, y] for x, y in arr.ravel()))
 
-    # make the array more structural so that it's easier to work with (e.g. sorting)
-    # i.e.
-    # [[x y], ...] -> [(x, y), ...]
-    new_points = np.array(
-        [(x, y) for x, y in landmarks], dtype=[("x", np.float32), ("y", np.float32)]
-    )
-    # sort to the lefts and the rights
-    boxes = np.sort(new_points.reshape(17, 4), order="x", axis=1)
-    # sort to the tops and the buttoms
-    boxes = np.sort(boxes.reshape(17, 2, 2), order="y", axis=2)
+    res = list(map(sorter, landmarks.reshape(-1, 4, 2)))
 
-    # now we have an array looks like this:
-    # [[[tl bl],
-    #   [tr br]],...]
-    #
-    # but we want this:
-    # [[[tl tr],
-    #   [bl br]],...]
-    #
-    # if there's no adjustment, then when it's flatten, the order won't be correct
-    boxes = np.transpose(boxes, (0, 2, 1)).reshape(17, 4)
-    # sort the arrage of points by the heights of their centers
-    center_y = np.mean(boxes["y"], axis=1)
-    boxes = boxes[np.argsort(center_y, axis=0)].reshape(-1)
-    return np.array([[x, y] for x, y in boxes])
+    return np.concatenate(res)
 
 
 def landmarks_resize(

@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 import torch
 from torch import optim
@@ -37,6 +38,12 @@ test_loader = DataLoader(test_dataset, batch_size=1)
 
 save_file = "bigbrain_net.pt"
 save_dir = "weights"
+logging_file = Path(save_dir, "loss.txt")
+
+if not logging_file.exists():
+    logging_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(logging_file, "w") as f:
+        f.write("train_loss,val_loss\n")
 
 logging.basicConfig(
     filename=os.path.join(save_dir, "loss.txt"), level=logging.DEBUG, format=""

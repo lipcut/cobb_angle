@@ -34,7 +34,7 @@ def spine_dataset16_train_transforms(
     landmarks = landmarks_resize(
         landmarks, orig_dim=(height, width), new_dim=(512, 256)
     )
-    landmarks = landmarks_rearrange(landmarks)
+    landmarks = torch.tensor(landmarks_rearrange(landmarks)).to(device=landmarks.device)
 
     return image, landmarks
 
@@ -57,6 +57,6 @@ def spine_dataset16_test_transforms(
     landmarks = landmarks_resize(
         landmarks, orig_dim=(height, width), new_dim=(512, 256)
     )
-    landmarks = landmarks_rearrange(landmarks)
+    landmarks = torch.tensor(landmarks_rearrange(landmarks)).to(device=landmarks.device)
 
     return image, landmarks
