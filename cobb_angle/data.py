@@ -20,7 +20,7 @@ class LandmarkDataset(VisionDataset):
         super().__init__(root=root, transforms=transforms)
         self.phase = "train" if train else "test"
         self.image_filenames = sorted(os.listdir(self.image_folder))
-        self.data, self.targets = self._load_data()
+        self.data, self.targets, self.image_sizes = self._load_data()
 
     @property
     def image_folder(self) -> Path:
@@ -30,6 +30,7 @@ class LandmarkDataset(VisionDataset):
     def landmarks_folder(self) -> Path:
         return Path(self.root, "labels", self.phase)
 
+<<<<<<< HEAD
     def _load_data(self) -> Tuple[list[np.ndarray], list[np.ndarray]]:
         images, landmarks = [], []
 
@@ -48,6 +49,28 @@ class LandmarkDataset(VisionDataset):
         image = self.data[index]
         landmarks = self.targets[index]
         filename = self.image_filenames[index]
+=======
+    def _load_data(self) -> tuple[list[np.ndarray], list[np.ndarray], list[tuple[int, int]]]:
+        images, landmarks, image_sizes = [], [], []
+
+        for image_filename in self.image_filenames:
+            filename = Path(self.image_folder, image_filename)
+            cv2_image = cv2.imread(filename)
+            images.append(cv2_image)
+
+            landmark = loadmat(filename + ".mat")["p2"]
+            landmark = landmarks_rearrange(landmark)
+            landmarks.append(landmark)
+
+            image_sizes.append(cv2_image.shape[:2])
+
+        return images, landmarks, image_sizes
+
+    def __getitem__(self, index: int) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int]]:
+        image = self.data[index]
+        landmarks = self.targets[index]
+        image_size = self.image_sizes[index]
+>>>>>>> experiment
 
         if self.transforms is not None:
             image, landmarks = self.transforms(image, landmarks)

@@ -1,5 +1,5 @@
-from typing import Tuple
 import math
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -17,8 +17,14 @@ class WingLoss(nn.Module):
         self.curvature = curvature
         self.reduction = reduction
 
-    def forward(self, outputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, outputs: torch.Tensor, targets: torch.Tensor, scaling: torch.Tensor
+    ) -> torch.Tensor:
         diff_abs = (targets - outputs).abs()
+        diff_abs[..., 0] = diff_abs[..., 0] * (scaling[..., 1, None] - 1)
+        diff_abs[..., 1] = diff_abs[..., 1] * (scaling[..., 0, None] - 1)
+
+
         loss = diff_abs.clone()
 
         idx_smaller = diff_abs < self.width
@@ -66,7 +72,10 @@ class WingLossWithRegularization(nn.Module):
         self.js_div = JSDivLoss2D()
 
     def forward(
-        self, input: Tuple[torch.Tensor, ...], target: torch.Tensor
+        self,
+        input: Tuple[torch.Tensor, ...],
+        target: torch.Tensor,
+        original_size: torch.Tensor,
     ) -> torch.Tensor:
         _, _, height, width = input[0].shape
 
@@ -77,7 +86,7 @@ class WingLossWithRegularization(nn.Module):
         stage1, stage2 = input
 
         return (
-            self.wing_loss(dsnt(stage1), target_resized)
-            + self.wing_loss(dsnt(stage2), target_resized)
+            self.wing_loss(dsnt(stage1), target_resized, scaling=original_size)
+            + self.wing_loss(dsnt(stage2), target_resized, scaling=original_size)
             # + self.regularization_coefficient * self.js_div(stage2, target_heatmap)
         )
